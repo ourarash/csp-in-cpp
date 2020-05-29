@@ -48,6 +48,12 @@ class Choice {
       _conditions.push_back(entry);
     }
   }
+
+  Choice(std::vector<Channel> &init_list) noexcept {
+    for (auto &entry : init_list) {
+      _conditions.push_back(!entry.IsIdle());
+    }
+  }
   int Select() {
     std::vector<int> enable_indices;
 

@@ -9,7 +9,7 @@
 // const std::optional<std::string>& param = std::nullopt
 void Channel::Write(int data) {
   std::unique_lock<std::mutex> ul(_mutex);
-  _req = _handshake_phase;
+  _req = !_req;
   _data = data;
   _status = ChannelStatus::w_pend;
   ul.unlock();
@@ -31,7 +31,7 @@ int Channel::Read() {
   int data = _data;
 
   if (_receive_counter == _number_of_receivers - 1) {
-    _ack = _handshake_phase;
+    _ack = !_ack;
     _status = ChannelStatus::idle;
     _receive_counter = 0;
     _prev_req = _req;

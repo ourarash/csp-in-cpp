@@ -45,92 +45,84 @@ void fork(Channel &left, Channel &right, int delay_ms, int number) {
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
     Choice c{!left.IsIdle(), !right.IsIdle()};
     int select = c.Select();
-    // if (select != -1) {
-    //   PrintThread{} << number << ". left.IsIdle(): " << left.IsIdle()
-    //                 << ", right.IsIdle(): " << right.IsIdle() << std::endl;
-    //   PrintThread{} << number << ".select: " << select << std::endl;
-    // }
+
     switch (select) {
       case 0:
         left.Read();
-        PrintThread{} << number << ". Left picked me up!" << std::endl;
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
         left.Read();
-        // PrintThread{} << number << ". Left put me down!" << std::endl;
         break;
+
       case 1:
         right.Read();
-        PrintThread{} << number << ". Right picked me up!" << std::endl;
         right.Read();
-        // PrintThread{} << number << ". Right put me down!" << std::endl;
-
         break;
     }
   }
 }
 
-void phil(Channel &left, Channel &right, int delay_ms, int number) {
+void phil(Channel &left, Channel &right, Channel &up, Channel &down,
+          int delay_ms, int number) {
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+    down.Write();
     PrintThread{} << number << ". Thinking!" << std::endl;
 
-    ForkJoin f1{[&]() {
-                  left.Write();
-                  PrintThread{} << number << ". left up" << std::endl;
-                },
-
-                [&]() {
-                  right.Write();
-                  PrintThread{} << number << ". right up" << std::endl;
-                }};
+    ForkJoin pickup_forks{[&]() { left.Write(); }, [&]() { right.Write(); }};
 
     PrintThread{} << number << ". Eating!" << std::endl;
 
-    ForkJoin f2{[&]() { left.Write(); },
-
-                [&]() { right.Write(); }};
-    // up.Write();
+    ForkJoin putdown_forks{[&]() { left.Write(); }, [&]() { right.Write(); }};
+    up.Write();
   }
 }
 
-// void butler(Channel &up, Channel &down, int delay_ms) {
-//   // int seated =
-//   while (true) {
-//     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
-//     PrintThread{} << "Thinking!" << std::endl;
-//     down.Write();
-//     PrintThread{} << "Seated!" << std::endl;
-//     ForkJoin f1{[&]() { left.Write(); },
+void butler(std::vector<Channel> &up, std::vector<Channel> &down, int delay_ms,
+            int N) {
+  int number_of_seated = 0;
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
 
-//                 [&]() { right.Write(); }};
-
-//     PrintThread{} << "Eating!" << std::endl;
-
-//     ForkJoin f2{[&]() { left.Write(); },
-
-//                 [&]() { right.Write(); }};
-//     up.Write();
-//   }
-// }
+    if (number_of_seated < N - 1) {
+      Choice c(down);
+      int select = c.Select();
+      if (select != -1) {
+        down[select].Read();
+        number_of_seated++;
+        PrintThread{} << "number_of_seated: " << number_of_seated << std::endl;
+      }
+    } else {
+      Choice c(up);
+      int select = c.Select();
+      if (select != -1) {
+        up[select].Read();
+        number_of_seated--;
+        PrintThread{} << "number_of_seated: " << number_of_seated << std::endl;
+      }
+    }
+  }
+}
 
 int main() {
-  const int N = 3;
+  const int N = 5;
   PrintThread{} << "Start!" << std::endl;
   std::vector<Channel> left(N);
   std::vector<Channel> right(N);
+  std::vector<Channel> up(N);
+  std::vector<Channel> down(N);
 
   std::vector<std::function<void()>> processes;
 
   for (int i = 0; i < N; i++) {
-    processes.push_back(
-        std::bind(phil, std::ref(left[i]), std::ref(right[i]), 1000, i));
+    processes.push_back(std::bind(phil, std::ref(left[i]), std::ref(right[i]),
+                                  std::ref(up[i]), std::ref(down[i]), 1000, i));
   }
 
   for (int i = 0; i < N; i++) {
     processes.push_back(
         std::bind(fork, std::ref(right[i]), std::ref(left[(i + 1) % N]), 0, i));
   }
+
+  processes.push_back(std::bind(butler, std::ref(up), std::ref(down), 0, N));
 
   ForkJoin f(processes);
 }
