@@ -2,7 +2,8 @@
 #include "gtest/gtest.h"
 #include <vector>
 
-TEST(HelloWorldShould, ReturnHelloWorld) {
+
+TEST(CSPTest, DiningPhilosophors) {
   Solution solution;
   std::string actual = solution.PrintHelloWorld();
   std::string expected = "**** Hello World ****";

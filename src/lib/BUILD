@@ -8,7 +8,15 @@ cc_library(
 
 cc_library(
     name = "csp_lib",
-    hdrs = ["csp/csp.h"],
     srcs = ["csp/csp.cc"],
+    hdrs = ["csp/csp.h"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "dining_philosophors_lib",
+    srcs = ["csp/dining_philosophors.cc"],
+    hdrs = ["csp/dining_philosophors.h"],
+    visibility = ["//visibility:public"],
+    deps = [":csp_lib"],
 )

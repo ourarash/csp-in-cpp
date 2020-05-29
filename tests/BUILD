@@ -6,3 +6,13 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "dining_philosophors_test",
+    srcs = ["dining_philosophors_test.cc"],
+    deps = [
+        "//src/lib:csp_lib",
+        "//src/lib:dining_philosophors_lib",
+        "@googletest//:gtest_main",
+    ],
+)
