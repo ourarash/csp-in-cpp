@@ -8,12 +8,13 @@
 #include "src/lib/csp/csp.h"
 #include "src/lib/csp/dining_philosophors.h"
 #include "src/lib/utility.h"
+bool g_stop = false;
+std::mutex g_mutex;
+std::condition_variable g_cv;
 
 using namespace csp;
 
-
 int main() {
-  
   const int N = 5;
   Channel<> test_channel;
   auto unit_under_test = std::thread(college, N, true, std::ref(test_channel));
@@ -23,7 +24,10 @@ int main() {
       std::cout << "seated: " << seated << std::endl;
       assert(seated < N);
     }
-    unit_under_test.detach();
+
+    std::unique_lock<std::mutex> ul(g_mutex);
+    g_stop = true;
+    g_cv.notify_all();
   });
 
   environment.join();

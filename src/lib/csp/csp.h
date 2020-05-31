@@ -9,6 +9,10 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+extern bool g_stop;
+extern std::mutex g_mutex;
+extern std::condition_variable g_cv;
+
 //-----------------------------------------------------
 namespace csp {
 
@@ -31,10 +35,22 @@ enum class ChannelStatus { idle, r_pend, w_pend, s12m_pend };
 template <typename T = int>
 class Channel {
  public:
-  Channel() {}
+  Channel() {
+    _sentry = std::thread([&]() {
+      std::unique_lock<std::mutex> ul(g_mutex);
+      g_cv.wait(ul, [&]() { return g_stop == true; });
+      _cl.notify_all();
+    });
+  }
   // Use this if it's a shared 1-to-many channel with multiple receivers.
-  Channel(int number_of_receivers)
-      : _number_of_receivers(number_of_receivers) {}
+  Channel(int number_of_receivers) : Channel() {
+    _number_of_receivers = number_of_receivers;
+  }
+  ~Channel() {
+    if (_sentry.joinable()) {
+      _sentry.join();
+    }
+  }
 
   void Write(T data = 0) {
     try {
@@ -46,7 +62,7 @@ class Channel {
       _cl.notify_all();
       ul.lock();
 
-      _cl.wait(ul, [=]() { return _ack != _prev_ack; });
+      _cl.wait(ul, [=]() { return _ack != _prev_ack || g_stop; });
       _status = ChannelStatus::idle;
       _prev_ack = _ack;
     } catch (const std::exception& e) {
@@ -61,7 +77,7 @@ class Channel {
 
       _status = ChannelStatus::r_pend;
       // if blocked, ul.unlock() is automatically called.
-      _cl.wait(ul, [=]() { return _req != _prev_req; });
+      _cl.wait(ul, [=]() { return _req != _prev_req || g_stop; });
       // if unblocks, ul.lock() is automatically called
       data = _data;
 
@@ -76,7 +92,7 @@ class Channel {
       } else {
         _status = ChannelStatus::s12m_pend;
         _receive_counter++;
-        _cl.wait(ul, [=]() { return _receive_counter == 0; });
+        _cl.wait(ul, [=]() { return _receive_counter == 0 || g_stop; });
       }
 
     } catch (const std::exception& e) {
@@ -99,6 +115,7 @@ class Channel {
   int _number_of_receivers = 1;
   int _receive_counter = 0;
   ChannelStatus _status = ChannelStatus::idle;
+  std::thread _sentry;
 };  // namespace csp
 //-----------------------------------------------------
 /**

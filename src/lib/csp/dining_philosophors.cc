@@ -10,14 +10,16 @@
 
 #include "src/lib/csp/csp.h"
 // #include "../utility.h"
-
+extern bool g_stop;
+extern std::mutex g_mutex;
+extern std::condition_variable g_cv;
 using namespace csp;
 // std::mutex PrintThread::_mutexPrint{};
 auto gen = std::bind(std::uniform_int_distribution<>(0, 10),
                      std::default_random_engine());
 
 void fork(Channel<> &left, Channel<> &right, int delay_ms, int number) {
-  while (true) {
+  while (!g_stop) {
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
     Choice c{!left.IsIdle(), !right.IsIdle()};
     int select = c.Select();
@@ -38,7 +40,7 @@ void fork(Channel<> &left, Channel<> &right, int delay_ms, int number) {
 
 void phil(Channel<> &left, Channel<> &right, Channel<> &up, Channel<> &down,
           int delay_ms, int number) {
-  while (true) {
+  while (!g_stop) {
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
     down.Write();
     // print(number, ". Thinking.\n");
@@ -54,7 +56,7 @@ void phil(Channel<> &left, Channel<> &right, Channel<> &up, Channel<> &down,
 void butler(std::vector<Channel<>> &up, std::vector<Channel<>> &down,
             int delay_ms, int N, bool testing, Channel<> &test_channel) {
   int number_of_seated = 0;
-  while (true) {
+  while (!g_stop) {
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
 
     if (number_of_seated < N - 1) {
@@ -98,7 +100,7 @@ void college(const int N, bool testing, Channel<> &test_channel) {
 
   for (int i = 0; i < N; i++) {
     processes.push_back(std::bind(phil, std::ref(left[i]), std::ref(right[i]),
-                                  std::ref(up[i]), std::ref(down[i]), 100, i));
+                                  std::ref(up[i]), std::ref(down[i]), 0, i));
   }
 
   for (int i = 0; i < N; i++) {
