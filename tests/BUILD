@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
 cc_test(
     name = "tests",
     srcs = glob(["**/*.cc"]),
@@ -14,5 +16,6 @@ cc_test(
         "//src/lib:csp_lib",
         "//src/lib:dining_philosophors_lib",
         "@googletest//:gtest_main",
+        "@glog",
     ],
 )

@@ -1,0 +1,19 @@
+Course Description
+This course teaches students how to use C++ as a professional developer in industry would. We will explore
+several different areas and applications where C++ sees significant use. We will learn applications of
+advanced concepts including lambda expressions, templates, secure coding, parallel programming, writing
+performant code, CMake, and continuous integration.
+Learning Objectives
+Write C++ code for programming assignments in several different real-life applications
+Refine student’s ability to design and write high-quality C++ code
+Learn how to improve the performance of C++ code
+Learn how to apply new programming paradigms (such as functional and data-oriented
+programming)
+Learn new ways to apply previously-known C++ language constructs
+Learn how the C++ language has evolved in the C++11, 14, and 17 standards, and how to utilize
+these new features
+Description and Assessment of Assignments
+There are seven different programming assignments in this course, and students will have approximately
+two weeks per assignment. Each assignment combines specific C++ skills with an industrial application of
+C++. Students are expected to complete these programming assignments individually. Each assignment’s
+instructions include a grading rubric for that assignment.

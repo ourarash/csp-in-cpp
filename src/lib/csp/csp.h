@@ -9,140 +9,148 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+
+//-----------------------------------------------------
+namespace csp {
+
 extern bool g_stop;
 extern std::mutex g_mutex;
 extern std::condition_variable g_cv;
 
 //-----------------------------------------------------
-namespace csp {
-
-// std::ostream& print_one(std::ostream& os);
-
-// template <class A0, class... Args>
-// std::ostream& print_one(std::ostream& os, const A0& a0, const Args&... args);
-
-// template <class... Args>
-// std::ostream& print(std::ostream& os, const Args&... args) ;
-
-// std::mutex& get_cout_mutex() ;
-
-// template <class... Args>
-// std::ostream& print(const Args&... args) ;
-//-----------------------------------------------------
 enum class ChannelStatus { idle, r_pend, w_pend, s12m_pend };
 //-----------------------------------------------------
-
+/**
+ * A class describing CSP channels.
+ */
 template <typename T = int>
 class Channel {
  public:
-  Channel() {
-    _sentry = std::thread([&]() {
-      std::unique_lock<std::mutex> ul(g_mutex);
-      g_cv.wait(ul, [&]() { return g_stop == true; });
-      _cl.notify_all();
-    });
-  }
+  Channel()
+      : sentry_(
+            // A thread that unblocks Read/Write when g_stop is true;
+            std::thread([&]() {
+              std::unique_lock<std::mutex> ul(g_mutex);
+              g_cv.wait(ul, [&]() { return g_stop == true; });
+              cl_.notify_all();
+            })) {}
   // Use this if it's a shared 1-to-many channel with multiple receivers.
   Channel(int number_of_receivers) : Channel() {
-    _number_of_receivers = number_of_receivers;
+    number_of_receivers_ = number_of_receivers;
   }
+
   ~Channel() {
-    if (_sentry.joinable()) {
-      _sentry.join();
+    if (sentry_.joinable()) {
+      sentry_.join();
     }
   }
 
-  void Write(T data = 0) {
+  // Performs CSP Write on the channel.
+  void Write(T data = T()) {
     try {
-      std::unique_lock<std::mutex> ul(_mutex);
-      _req = !_req;
-      _data = data;
-      _status = ChannelStatus::w_pend;
+      // Write data and set req.
+      std::unique_lock<std::mutex> ul(mutex_);
+      req_ = !req_;
+      data_ = data;
+      status_ = ChannelStatus::w_pend;
       ul.unlock();
-      _cl.notify_all();
+      cl_.notify_all();
       ul.lock();
 
-      _cl.wait(ul, [=]() { return _ack != _prev_ack || g_stop; });
-      _status = ChannelStatus::idle;
-      _prev_ack = _ack;
+      // Wait for ack.
+      cl_.wait(ul, [=]() { return ack_ != prev_ack_ || g_stop; });
+      status_ = ChannelStatus::idle;
+      prev_ack_ = ack_;
     } catch (const std::exception& e) {
-      std::cout << "Got this error:" << e.what() << std::endl;
+      std::cout << "Error in Write:" << e.what() << std::endl;
     }
   }
 
   T Read() {
-    int data;
+    T data;
     try {
-      std::unique_lock<std::mutex> ul(_mutex);
+      std::unique_lock<std::mutex> ul(mutex_);
 
-      _status = ChannelStatus::r_pend;
+      status_ = ChannelStatus::r_pend;
       // if blocked, ul.unlock() is automatically called.
-      _cl.wait(ul, [=]() { return _req != _prev_req || g_stop; });
+      cl_.wait(ul, [=]() { return req_ != prev_req_ || g_stop; });
       // if unblocks, ul.lock() is automatically called
-      data = _data;
+      data = data_;
 
-      if (_receive_counter == _number_of_receivers - 1) {
-        _ack = !_ack;
-        _status = ChannelStatus::idle;
-        _receive_counter = 0;
-        _prev_req = _req;
+      if (receive_counter_ == number_of_receivers_ - 1) {
+        ack_ = !ack_;
+        status_ = ChannelStatus::idle;
+        receive_counter_ = 0;
+        prev_req_ = req_;
         ul.unlock();
-        _cl.notify_all();
+        cl_.notify_all();
         ul.lock();
       } else {
-        _status = ChannelStatus::s12m_pend;
-        _receive_counter++;
-        _cl.wait(ul, [=]() { return _receive_counter == 0 || g_stop; });
+        status_ = ChannelStatus::s12m_pend;
+        receive_counter_++;
+        cl_.wait(ul, [=]() { return receive_counter_ == 0 || g_stop; });
       }
 
     } catch (const std::exception& e) {
-      std::cout << "Got this error:" << e.what() << std::endl;
+      std::cout << "Error in Read:" << e.what() << std::endl;
     }
     return data;
   }
-  ChannelStatus getStatus() { return _status; }
-  bool IsIdle() const { return _status == ChannelStatus::idle; }
-  bool IsBusy() const { return _status != ChannelStatus::idle; }
+  ChannelStatus getStatus() { return status_; }
+  bool IsIdle() const { return status_ == ChannelStatus::idle; }
+  bool IsBusy() const { return status_ != ChannelStatus::idle; }
+
+  static void BeginCSP() {
+    std::unique_lock<std::mutex> ul(g_mutex);
+    g_stop = false;
+    g_cv.notify_all();
+  }
+  static void EndCSP() {
+    std::unique_lock<std::mutex> ul(g_mutex);
+    g_stop = true;
+    g_cv.notify_all();
+  }
 
  private:
-  std::mutex _mutex;
-  std::condition_variable _cl;
-  bool _req = false;
-  bool _ack = false;
-  bool _prev_req = false;
-  bool _prev_ack = false;
-  T _data;
-  int _number_of_receivers = 1;
-  int _receive_counter = 0;
-  ChannelStatus _status = ChannelStatus::idle;
-  std::thread _sentry;
+  std::mutex mutex_;
+  std::condition_variable cl_;
+  bool req_ = false;
+  bool ack_ = false;
+  bool prev_req_ = false;
+  bool prev_ack_ = false;
+  T data_;
+  int number_of_receivers_ = 1;
+  int receive_counter_ = 0;
+  ChannelStatus status_ = ChannelStatus::idle;
+  std::thread sentry_;
 };  // namespace csp
 //-----------------------------------------------------
 /**
  * \class Choice
- * \brief Implements CSP choice construct
- * \author Ari Saif (https://www.youtube.com/channel/UCuRf9tqJaRgXLyl85Nf-Vtg)
+ * \brief Implements CSP choice construct.
+ *        Randomly selects an true item from a list of boolean variables.
+ * \author Ari Saif (https://www.youtube.com/c/arisaif)
  */
 class Choice {
  private:
-  std::vector<bool> _conditions;
+  std::vector<bool> conditions_;
 
  public:
   /**
    * \brief: creates a new Choice from an initialization list of boolean values
    */
-  Choice(std::initializer_list<bool>&& init_list) noexcept {
+  Choice(std::initializer_list<bool> init_list) noexcept {
     for (const auto& entry : init_list) {
-      _conditions.push_back(entry);
+      conditions_.push_back(entry);
     }
   }
 
   /**
    * \brief: creates a new Choice from an initialization list of channels
    */
-  Choice(std::initializer_list<Channel<>>&& init_list) noexcept {
+  Choice(std::initializer_list<Channel<>> init_list) noexcept {
     for (const auto& entry : init_list) {
-      _conditions.push_back(!entry.IsIdle());
+      conditions_.push_back(entry.IsBusy());
     }
   }
 
@@ -151,7 +159,7 @@ class Choice {
    */
   Choice(std::vector<Channel<>>& init_list) noexcept {
     for (const auto& entry : init_list) {
-      _conditions.push_back(!entry.IsIdle());
+      conditions_.push_back(entry.IsBusy());
     }
   }
 
@@ -161,8 +169,8 @@ class Choice {
   int Select() {
     std::vector<int> enable_indices;
 
-    for (int i = 0; i < _conditions.size(); i++) {
-      if (_conditions[i]) {
+    for (int i = 0; i < conditions_.size(); i++) {
+      if (conditions_[i]) {
         enable_indices.push_back(i);
       }
     }
@@ -188,7 +196,7 @@ class ForkJoin {
   std::vector<std::function<void()>> _funcs;
 
  public:
-  ForkJoin(std::initializer_list<std::function<void()>>&& init_list) noexcept {
+  ForkJoin(std::initializer_list<std::function<void()>> init_list) noexcept {
     for (auto& entry : init_list) {
       _threads.push_back(std::thread(entry));
     }
@@ -231,7 +239,7 @@ class ParBlock {
   std::vector<std::function<void()>> _funcs;
 
  public:
-  ParBlock(std::initializer_list<std::function<void()>>&& init_list) noexcept {
+  ParBlock(std::initializer_list<std::function<void()>> init_list) noexcept {
     for (auto& entry : init_list) {
       _funcs.push_back(entry);
     }
@@ -266,7 +274,6 @@ class ParBlock {
         t.join();
       }
     }
-    std::cout << "here2!" << std::endl;
   }
 
   void Detach(int i) {
@@ -281,6 +288,13 @@ class ParBlock {
     _threads[i].detach();
   }
 };
+
+//-----------------------------------------------------------------------------
+template <typename T>
+void Source(Channel<T>& out, T& data) {
+  out.Write(data);
+}
+//-----------------------------------------------------------------------------
 
 /** Thread safe cout class
  * Exemple of use:

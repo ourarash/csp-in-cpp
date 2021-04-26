@@ -2,44 +2,40 @@
 
 #include <vector>
 
+#include "glog/logging.h"
+#include "glog/stl_logging.h"
 #include "gtest/gtest.h"
 #include "src/lib/csp/csp.h"
+
+namespace csp {
 bool g_stop = false;
 std::mutex g_mutex;
 std::condition_variable g_cv;
+}  // namespace csp
 
-inline void setup(int N) {
-  std::unique_lock<std::mutex> ul(g_mutex);
-  g_stop = false;
-  ul.unlock();
-  g_cv.notify_all();
+inline void setup(int N, bool debugLog = false) {
+  Channel<>::BeginCSP();
   Channel<> test_channel;
 
-  auto unit_under_test = std::thread(college, N, true, std::ref(test_channel));
-  auto environment = std::thread([&]() {
-    for (int i = 0; i < 1000; i++) {
-      auto seated = test_channel.Read();
-      // std::cout << "seated: " << seated << std::endl;
-      EXPECT_LT(seated, N);
-    }
-    std::unique_lock<std::mutex> ul(g_mutex);
-    g_stop = true;
-    ul.unlock();
-    g_cv.notify_all();
-  });
+  ForkJoin f{// Unit under test
+             std::bind(Table, N, true, std::ref(test_channel)),
+             // Testing environment
+             [&]() {
+               for (int i = 0; i < 100; i++) {
+                 auto seated = test_channel.Read();
+                 if (debugLog) {
+                   LOG(INFO)
+                       << "N: " << N << ", seated: " << seated << std::endl;
+                 }
 
-  environment.join();
-  if (unit_under_test.joinable()) {
-    unit_under_test.join();
+                 EXPECT_LT(seated, N);
+               }
+               Channel<>::EndCSP();
+             }};
+}
+
+TEST(CSPTest, DiningPhilosophors) {
+  for (int n = 2; n < 100; n++) {
+    setup(n);
   }
-}
-
-TEST(CSPTest, DiningPhilosophors_5) {
-  const int N = 5;
-  setup(N);
-}
-
-TEST(CSPTest, DiningPhilosophors_3) {
-  const int N = 10;
-  setup(N);
 }
